@@ -17,6 +17,79 @@ LOG_FILE="$NETWORK_VOLUME/models/model_setup.log"
 
 echo "Step 2: Model Storage Setup" | tee -a "$LOG_FILE"
 
+# Function to print diagnostic information
+print_diagnostics() {
+    echo "=== DIAGNOSTIC INFORMATION ===" | tee -a "$LOG_FILE"
+    echo "Current directory: $(pwd)" | tee -a "$LOG_FILE"
+    echo "Python version: $(python3 --version)" | tee -a "$LOG_FILE"
+    echo "Poetry version: $(poetry --version)" | tee -a "$LOG_FILE"
+    
+    echo -e "\nDisk Space:" | tee -a "$LOG_FILE"
+    df -h | tee -a "$LOG_FILE"
+    
+    echo -e "\nModel Directory Structure:" | tee -a "$LOG_FILE"
+    ls -la "$MODEL_DIR" 2>/dev/null || echo "Model directory does not exist yet" | tee -a "$LOG_FILE"
+    
+    echo -e "\nCache Directory:" | tee -a "$LOG_FILE"
+    ls -la /workspace/cache/huggingface 2>/dev/null || echo "Cache directory does not exist yet" | tee -a "$LOG_FILE"
+    
+    echo -e "\nPython Dependencies:" | tee -a "$LOG_FILE"
+    poetry show | grep -E "huggingface|torch|transformers|hf-transfer" | tee -a "$LOG_FILE"
+    
+    echo "===========================" | tee -a "$LOG_FILE"
+}
+
+# Function to check dependencies
+check_dependencies() {
+    echo "Checking dependencies..." | tee -a "$LOG_FILE"
+    local missing_deps=0
+    
+    # Check for hf_transfer
+    if ! poetry run pip freeze | grep -q "hf-transfer"; then
+        echo "Installing hf_transfer for faster downloads..." | tee -a "$LOG_FILE"
+        poetry add hf_transfer
+    fi
+    
+    # Verify huggingface-hub installation
+    if ! poetry run pip freeze | grep -q "huggingface-hub"; then
+        echo "Installing huggingface-hub..." | tee -a "$LOG_FILE"
+        poetry add huggingface-hub
+        missing_deps=1
+    fi
+    
+    # Verify transformers installation
+    if ! poetry run pip freeze | grep -q "transformers"; then
+        echo "Installing transformers..." | tee -a "$LOG_FILE"
+        poetry add transformers
+        missing_deps=1
+    fi
+    
+    if [ $missing_deps -eq 1 ]; then
+        echo "Dependencies were missing and have been installed." | tee -a "$LOG_FILE"
+    else
+        echo "All required dependencies are installed." | tee -a "$LOG_FILE"
+    fi
+}
+
+# Function to verify huggingface access
+verify_huggingface_access() {
+    echo "Verifying Hugging Face model access..." | tee -a "$LOG_FILE"
+    if ! poetry run python -c "
+from huggingface_hub import model_info
+try:
+    info = model_info('Wan-AI/Wan2.1-T2V-1.3B')
+    print(f'Model size: {info.size_name}')
+    print(f'Last modified: {info.last_modified}')
+    print('Access verified successfully')
+except Exception as e:
+    print(f'Error accessing model: {str(e)}')
+    exit(1)
+" 2>&1 | tee -a "$LOG_FILE"; then
+        echo "Error: Cannot access Wan-AI/Wan2.1-T2V-1.3B on Hugging Face" | tee -a "$LOG_FILE"
+        return 1
+    fi
+}
+
 # Function to check if a specific model component exists and is valid
 check_model_component() {
     local component=$1
@@ -70,90 +143,49 @@ download_model_files() {
     # Setup cache in workspace
     setup_cache
     
-    # Check available space
-    local required_space_gb=15  # Adjust this based on 1.3B model size
-    local available_space_gb=$(check_available_space "/dev/shm")
-    local model_space_gb=$(check_available_space "$NETWORK_VOLUME")
+    echo "Starting download with verbose output..." | tee -a "$LOG_FILE"
+    export HF_HUB_ENABLE_HF_TRANSFER=1
+    export HF_TRANSFER_DISABLE_PROGRESS_BARS=0
     
-    echo "Available space:" | tee -a "$LOG_FILE"
-    echo "- /dev/shm (temp): ${available_space_gb}GB" | tee -a "$LOG_FILE"
-    echo "- $NETWORK_VOLUME: ${model_space_gb}GB" | tee -a "$LOG_FILE"
+    # Try the download with specific file patterns
+    local model_files=(
+        "t5_tokenizer/config.json"
+        "t5_tokenizer/special_tokens_map.json"
+        "t5_tokenizer/tokenizer_config.json"
+        "t5_checkpoint/config.json"
+        "t5_checkpoint/model.safetensors"
+        "vae_checkpoint/model.safetensors"
+        "clip_checkpoint/model.safetensors"
+    )
     
-    if [ "$available_space_gb" -lt "$required_space_gb" ] || [ "$model_space_gb" -lt "$required_space_gb" ]; then
-        echo "Warning: Insufficient space available. Cleaning up..." | tee -a "$LOG_FILE"
-        cleanup_temp_files
-        
-        # Check space again after cleanup
-        available_space_gb=$(check_available_space "/dev/shm")
-        
-        if [ "$available_space_gb" -lt "$required_space_gb" ] || [ "$model_space_gb" -lt "$required_space_gb" ]; then
-            echo "Error: Still insufficient space after cleanup." | tee -a "$LOG_FILE"
-            echo "Need at least ${required_space_gb}GB in temporary and model directories" | tee -a "$LOG_FILE"
+    for file in "${model_files[@]}"; do
+        echo "Downloading $file..." | tee -a "$LOG_FILE"
+        if ! HUGGINGFACE_HUB_CACHE=/workspace/cache/huggingface \
+             poetry run huggingface-cli download --resume-download \
+             --local-dir-use-symlinks False \
+             --include "$file" \
+             Wan-AI/Wan2.1-T2V-1.3B \
+             --local-dir "$temp_dir" 2>&1 | tee -a "$LOG_FILE"; then
+            echo "Failed to download $file" | tee -a "$LOG_FILE"
             return 1
-        fi
-    fi
-    
-    # Define required components
-    local components=("t5_tokenizer" "t5_checkpoint" "vae_checkpoint" "clip_checkpoint")
-    local missing_components=()
-    
-    # Check which components are missing
-    for component in "${components[@]}"; do
-        if [ "$(check_model_component $component)" = "false" ]; then
-            missing_components+=($component)
-            echo "Missing component: $component" | tee -a "$LOG_FILE"
-        else
-            echo "Component already exists: $component" | tee -a "$LOG_FILE"
         fi
     done
     
-    # If any components are missing, download them
-    if [ ${#missing_components[@]} -gt 0 ]; then
-        echo "Downloading missing model components..." | tee -a "$LOG_FILE"
-        mkdir -p "$temp_dir"
-        
-        echo "Using temporary directory: $temp_dir" | tee -a "$LOG_FILE"
-        echo "Using cache directory: /workspace/cache/huggingface" | tee -a "$LOG_FILE"
-        
-        # Try download with cleanup on failure
-        echo "Starting download of Wan2.1-T2V-1.3B..." | tee -a "$LOG_FILE"
-        export HF_HUB_ENABLE_HF_TRANSFER=1  # Enable faster downloads
-        if ! HUGGINGFACE_HUB_CACHE=/workspace/cache/huggingface \
-             poetry run huggingface-cli download --resume-download --local-dir-use-symlinks False \
-             Wan-AI/Wan2.1-T2V-1.3B --local-dir "$temp_dir" 2>&1 | tee -a "$LOG_FILE"; then
-            echo "Download failed. Cleaning up and retrying..." | tee -a "$LOG_FILE"
-            cleanup_temp_files
-            if ! HUGGINGFACE_HUB_CACHE=/workspace/cache/huggingface \
-                 poetry run huggingface-cli download --resume-download --local-dir-use-symlinks False \
-                 Wan-AI/Wan2.1-T2V-1.3B --local-dir "$temp_dir" 2>&1 | tee -a "$LOG_FILE"; then
-                echo "Download failed after cleanup. Please check your network connection and space." | tee -a "$LOG_FILE"
-                return 1
-            fi
+    # Move files to final location
+    echo "Moving files to final location..." | tee -a "$LOG_FILE"
+    for dir in t5_tokenizer t5_checkpoint vae_checkpoint clip_checkpoint; do
+        if [ -d "$temp_dir/$dir" ]; then
+            echo "Moving $dir..." | tee -a "$LOG_FILE"
+            rm -rf "$MODEL_DIR/$dir" 2>/dev/null || true
+            mv "$temp_dir/$dir" "$MODEL_DIR/"
+            echo "Verifying $dir contents:" | tee -a "$LOG_FILE"
+            ls -la "$MODEL_DIR/$dir" | tee -a "$LOG_FILE"
+        else
+            echo "Warning: $dir not found in downloaded files" | tee -a "$LOG_FILE"
         fi
-        
-        echo "Download completed. Verifying downloaded files..." | tee -a "$LOG_FILE"
-        ls -la "$temp_dir" | tee -a "$LOG_FILE"
-        
-        # Move only missing components
-        for component in "${missing_components[@]}"; do
-            echo "Processing component: $component" | tee -a "$LOG_FILE"
-            if [ -d "$temp_dir/$component" ]; then
-                echo "Moving $component to final location..." | tee -a "$LOG_FILE"
-                rm -rf "$MODEL_DIR/$component" 2>/dev/null || true
-                mv "$temp_dir/$component" "$MODEL_DIR/"
-                echo "Verifying moved component..." | tee -a "$LOG_FILE"
-                ls -la "$MODEL_DIR/$component" | tee -a "$LOG_FILE"
-            else
-                echo "Warning: Component $component not found in downloaded files" | tee -a "$LOG_FILE"
-                ls -R "$temp_dir" | tee -a "$LOG_FILE"
-            fi
-        done
-        
-        # Cleanup
-        cleanup_temp_files
-    else
-        echo "All components are already present" | tee -a "$LOG_FILE"
-    fi
+    done
+    
+    cleanup_temp_files
 }
 
 # Function to create dummy model files for local testing
@@ -243,6 +275,16 @@ fi
 
 # Create models directory
 mkdir -p "$(dirname "$MODEL_DIR")"
+
+# Main execution
+echo "Starting setup with diagnostics..." | tee -a "$LOG_FILE"
+print_diagnostics
+check_dependencies
+
+if ! verify_huggingface_access; then
+    echo "Failed to verify Hugging Face access. Please check your internet connection and try again." | tee -a "$LOG_FILE"
+    exit 1
+fi
 
 # Main process: verify, download missing, verify again
 while true; do
