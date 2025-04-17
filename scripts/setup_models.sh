@@ -14,6 +14,7 @@ fi
 # Create log directory
 mkdir -p "$(dirname "$NETWORK_VOLUME/models/model_setup.log")"
 LOG_FILE="$NETWORK_VOLUME/models/model_setup.log"
+TEMP_DIR="/dev/shm/wan_model_download"
 
 echo "Step 2: Model Storage Setup" | tee -a "$LOG_FILE"
 
@@ -135,57 +136,51 @@ setup_cache() {
     fi
 }
 
+# Function to check for required files
+check_files() {
+    echo "Checking for required files..." | tee -a "$LOG_FILE"
+    
+    # Just check for key file patterns anywhere in the directory
+    local has_t5=$(find "$1" -type f -name "*umt5*.pth" -o -name "*t5*.safetensors" 2>/dev/null)
+    local has_vae=$(find "$1" -type f -name "*VAE*.pth" -o -name "*vae*.safetensors" 2>/dev/null)
+    local has_tokenizer=$(find "$1" -type f -name "tokenizer*.json" -o -name "spiece.model" 2>/dev/null)
+    local has_diffusion=$(find "$1" -type f -name "*diffusion*.safetensors" 2>/dev/null)
+    
+    if [[ -n "$has_t5" ]] && [[ -n "$has_vae" ]] && [[ -n "$has_tokenizer" ]] && [[ -n "$has_diffusion" ]]; then
+        echo "✓ All required files found" | tee -a "$LOG_FILE"
+        return 0
+    else
+        echo "× Missing files:" | tee -a "$LOG_FILE"
+        [[ -z "$has_t5" ]] && echo "  - T5 model" | tee -a "$LOG_FILE"
+        [[ -z "$has_vae" ]] && echo "  - VAE model" | tee -a "$LOG_FILE"
+        [[ -z "$has_tokenizer" ]] && echo "  - Tokenizer" | tee -a "$LOG_FILE"
+        [[ -z "$has_diffusion" ]] && echo "  - Diffusion model" | tee -a "$LOG_FILE"
+        return 1
+    fi
+}
+
 # Function to download model files if needed
-download_model_files() {
-    local temp_dir="/dev/shm/wan_model_download"
-    mkdir -p "$MODEL_DIR"
-    
-    # Setup cache in workspace
-    setup_cache
-    
-    echo "Starting download with verbose output..." | tee -a "$LOG_FILE"
+download_model() {
+    mkdir -p "$TEMP_DIR"
     export HF_HUB_ENABLE_HF_TRANSFER=1
     export HF_TRANSFER_DISABLE_PROGRESS_BARS=0
     
-    # Try the download with specific file patterns
-    local model_files=(
-        "t5_tokenizer/config.json"
-        "t5_tokenizer/special_tokens_map.json"
-        "t5_tokenizer/tokenizer_config.json"
-        "t5_checkpoint/config.json"
-        "t5_checkpoint/model.safetensors"
-        "vae_checkpoint/model.safetensors"
-        "clip_checkpoint/model.safetensors"
-    )
+    echo "Downloading model files..." | tee -a "$LOG_FILE"
+    if ! HUGGINGFACE_HUB_CACHE=/workspace/cache/huggingface \
+         poetry run huggingface-cli download --resume-download \
+         --local-dir-use-symlinks False \
+         Wan-AI/Wan2.1-T2V-1.3B \
+         --local-dir "$TEMP_DIR" 2>&1 | tee -a "$LOG_FILE"; then
+        echo "Download failed" | tee -a "$LOG_FILE"
+        return 1
+    fi
     
-    for file in "${model_files[@]}"; do
-        echo "Downloading $file..." | tee -a "$LOG_FILE"
-        if ! HUGGINGFACE_HUB_CACHE=/workspace/cache/huggingface \
-             poetry run huggingface-cli download --resume-download \
-             --local-dir-use-symlinks False \
-             --include "$file" \
-             Wan-AI/Wan2.1-T2V-1.3B \
-             --local-dir "$temp_dir" 2>&1 | tee -a "$LOG_FILE"; then
-            echo "Failed to download $file" | tee -a "$LOG_FILE"
-            return 1
-        fi
-    done
-    
-    # Move files to final location
+    # Move everything to final location
     echo "Moving files to final location..." | tee -a "$LOG_FILE"
-    for dir in t5_tokenizer t5_checkpoint vae_checkpoint clip_checkpoint; do
-        if [ -d "$temp_dir/$dir" ]; then
-            echo "Moving $dir..." | tee -a "$LOG_FILE"
-            rm -rf "$MODEL_DIR/$dir" 2>/dev/null || true
-            mv "$temp_dir/$dir" "$MODEL_DIR/"
-            echo "Verifying $dir contents:" | tee -a "$LOG_FILE"
-            ls -la "$MODEL_DIR/$dir" | tee -a "$LOG_FILE"
-        else
-            echo "Warning: $dir not found in downloaded files" | tee -a "$LOG_FILE"
-        fi
-    done
+    mv "$TEMP_DIR"/* "$MODEL_DIR/" 2>/dev/null || true
     
-    cleanup_temp_files
+    # Clean up
+    rm -rf "$TEMP_DIR"
 }
 
 # Function to create dummy model files for local testing
@@ -295,7 +290,7 @@ while true; do
     if [ "$LOCAL_TEST" = "true" ]; then
         create_dummy_files
     else
-        download_model_files
+        download_model
     fi
     
     # Break if we've downloaded everything but verification still fails
