@@ -7,21 +7,25 @@ if [ "$LOCAL_TEST" = "true" ]; then
     MODEL_DIR="$NETWORK_VOLUME/Wan2.1-T2V-14B"
     echo "Running in local test mode - using dummy model files"
 else
-    NETWORK_VOLUME="/workspace/models"
-    MODEL_DIR="$NETWORK_VOLUME/Wan2.1-T2V-14B"
+    NETWORK_VOLUME="/workspace"
+    MODEL_DIR="$NETWORK_VOLUME/models/Wan2.1-T2V-14B"
 fi
 
 # Create log directory
-mkdir -p "$(dirname "$NETWORK_VOLUME/model_setup.log")"
-LOG_FILE="$NETWORK_VOLUME/model_setup.log"
+mkdir -p "$(dirname "$NETWORK_VOLUME/models/model_setup.log")"
+LOG_FILE="$NETWORK_VOLUME/models/model_setup.log"
 
 echo "Step 2: Model Storage Setup" | tee -a "$LOG_FILE"
 
 # Function to download model files if needed
 download_model_files() {
-    if [ ! -d "$MODEL_DIR" ] || [ -z "$(ls -A $MODEL_DIR)" ]; then
+    if [ ! -d "$MODEL_DIR" ] || [ -z "$(ls -A $MODEL_DIR 2>/dev/null)" ]; then
+        echo "Creating model directory..." | tee -a "$LOG_FILE"
+        mkdir -p "$MODEL_DIR"
         echo "Downloading model files..." | tee -a "$LOG_FILE"
         poetry run huggingface-cli download Wan-AI/Wan2.1-T2V-14B --local-dir "$MODEL_DIR"
+    else
+        echo "Model directory already exists and is not empty" | tee -a "$LOG_FILE"
     fi
 }
 
@@ -101,8 +105,8 @@ else
     fi
 fi
 
-# Create model directory if it doesn't exist
-mkdir -p "$MODEL_DIR"
+# Create models directory
+mkdir -p "$(dirname "$MODEL_DIR")"
 
 # Download or create model files
 if [ "$LOCAL_TEST" = "true" ]; then

@@ -66,7 +66,7 @@ description = "Deployment scripts for Wan2.1 on RunPod"
 authors = ["Your Name <your.email@example.com>"]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.10"
 huggingface-hub = "^0.21.1"
 torch = "^2.2.0"
 transformers = "^4.37.2"

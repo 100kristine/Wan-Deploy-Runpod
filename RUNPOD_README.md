@@ -35,8 +35,8 @@ If you need to run these steps manually:
 curl -sSL https://install.python-poetry.org | python3 -
 
 # Configure git
-git config --global user.name "Your Name"
-git config --global user.email "your.email@example.com"
+git config --global user.name "100kristine"
+git config --global user.email "kristineyoshihara@gmail.com"
 ```
 
 ### 2. Environment Setup
