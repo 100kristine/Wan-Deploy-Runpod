@@ -1,12 +1,40 @@
 #!/bin/bash
 set -e  # Exit on any error
 
+# Define network volume location
+NETWORK_VOLUME="/workspace/models"
+CACHE_DIR="$NETWORK_VOLUME/env_cache"
+INIT_CACHE="$CACHE_DIR/init_setup_complete"
+
 echo "Starting initial RunPod setup..."
+
+# Check if already initialized from cache
+if [ -f "$INIT_CACHE" ]; then
+    echo "Found cached initialization, restoring settings..."
+    # Restore git config
+    if [ -f "$CACHE_DIR/git_config" ]; then
+        while IFS='=' read -r key value; do
+            git config --global "$key" "$value"
+        done < "$CACHE_DIR/git_config"
+    fi
+    
+    # Restore Poetry config
+    if [ -f "$CACHE_DIR/poetry_config" ]; then
+        mkdir -p ~/.config/pypoetry
+        cp "$CACHE_DIR/poetry_config" ~/.config/pypoetry/config.toml
+    fi
+    
+    echo "Cached initialization restored! 🎉"
+    exit 0
+fi
 
 # Function to check if a command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
+
+# Create cache directory
+mkdir -p "$CACHE_DIR"
 
 # Install system dependencies
 echo "Installing system dependencies..."
@@ -21,6 +49,10 @@ fi
 
 # Configure Poetry to create virtual environments in the project directory
 poetry config virtualenvs.in-project true
+
+# Cache Poetry configuration
+mkdir -p ~/.config/pypoetry
+cp ~/.config/pypoetry/config.toml "$CACHE_DIR/poetry_config" 2>/dev/null || true
 
 # Install huggingface-hub through Poetry
 echo "Setting up Python dependencies..."
@@ -56,6 +88,9 @@ if [ -z "$(git config --global user.name)" ]; then
     exit 1
 fi
 
+# Cache git configuration
+git config --global --list > "$CACHE_DIR/git_config"
+
 # Check for Hugging Face token
 if [ -z "$HUGGING_FACE_TOKEN" ]; then
     echo "Hugging Face token not found."
@@ -70,5 +105,8 @@ poetry run huggingface-cli login --token "$HUGGING_FACE_TOKEN"
 # Make all scripts executable
 chmod +x *.sh
 
-echo "Initial setup complete! 🎉"
+# Mark initialization as complete
+touch "$INIT_CACHE"
+
+echo "Initial setup complete and cached! 🎉"
 echo "You can now proceed with running setup_env.sh and setup_models.sh" 
