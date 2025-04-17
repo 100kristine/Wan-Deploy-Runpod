@@ -27,10 +27,71 @@ check_model_component() {
     fi
 }
 
+# Function to check available space in GB
+check_available_space() {
+    local path=$1
+    local available_kb=$(df -k "$path" | awk 'NR==2 {print $4}')
+    echo $((available_kb / 1024 / 1024))
+}
+
+# Function to clean up temporary files and cache
+cleanup_temp_files() {
+    echo "Cleaning up temporary files and cache..." | tee -a "$LOG_FILE"
+    rm -rf /dev/shm/wan_model_download
+    rm -rf /workspace/cache/huggingface/hub/tmp*
+}
+
+# Function to setup cache directory
+setup_cache() {
+    echo "Setting up cache directory..." | tee -a "$LOG_FILE"
+    # Move cache to workspace if it's in root
+    if [ -d "/root/.cache/huggingface" ] && [ ! -L "/root/.cache/huggingface" ]; then
+        echo "Moving cache to workspace..." | tee -a "$LOG_FILE"
+        mkdir -p /workspace/cache
+        mv /root/.cache/huggingface /workspace/cache/ 2>/dev/null || true
+        rm -rf /root/.cache/huggingface
+        ln -s /workspace/cache/huggingface /root/.cache/huggingface
+    fi
+    
+    # Ensure cache directory exists
+    mkdir -p /workspace/cache/huggingface
+    
+    # Ensure symlink exists
+    if [ ! -L "/root/.cache/huggingface" ]; then
+        ln -s /workspace/cache/huggingface /root/.cache/huggingface
+    fi
+}
+
 # Function to download model files if needed
 download_model_files() {
-    local temp_dir="/tmp/wan_model_download"
+    local temp_dir="/dev/shm/wan_model_download"
     mkdir -p "$MODEL_DIR"
+    
+    # Setup cache in workspace
+    setup_cache
+    
+    # Check available space
+    local required_space_gb=15  # Adjust this based on 1.3B model size
+    local available_space_gb=$(check_available_space "/dev/shm")
+    local model_space_gb=$(check_available_space "$NETWORK_VOLUME")
+    
+    echo "Available space:" | tee -a "$LOG_FILE"
+    echo "- /dev/shm (temp): ${available_space_gb}GB" | tee -a "$LOG_FILE"
+    echo "- $NETWORK_VOLUME: ${model_space_gb}GB" | tee -a "$LOG_FILE"
+    
+    if [ "$available_space_gb" -lt "$required_space_gb" ] || [ "$model_space_gb" -lt "$required_space_gb" ]; then
+        echo "Warning: Insufficient space available. Cleaning up..." | tee -a "$LOG_FILE"
+        cleanup_temp_files
+        
+        # Check space again after cleanup
+        available_space_gb=$(check_available_space "/dev/shm")
+        
+        if [ "$available_space_gb" -lt "$required_space_gb" ] || [ "$model_space_gb" -lt "$required_space_gb" ]; then
+            echo "Error: Still insufficient space after cleanup." | tee -a "$LOG_FILE"
+            echo "Need at least ${required_space_gb}GB in temporary and model directories" | tee -a "$LOG_FILE"
+            return 1
+        fi
+    fi
     
     # Define required components
     local components=("t5_tokenizer" "t5_checkpoint" "vae_checkpoint" "clip_checkpoint")
@@ -51,20 +112,45 @@ download_model_files() {
         echo "Downloading missing model components..." | tee -a "$LOG_FILE"
         mkdir -p "$temp_dir"
         
-        # Download to temporary directory - using 1.3B model
-        poetry run huggingface-cli download Wan-AI/Wan2.1-T2V-1.3B --local-dir "$temp_dir"
+        echo "Using temporary directory: $temp_dir" | tee -a "$LOG_FILE"
+        echo "Using cache directory: /workspace/cache/huggingface" | tee -a "$LOG_FILE"
+        
+        # Try download with cleanup on failure
+        echo "Starting download of Wan2.1-T2V-1.3B..." | tee -a "$LOG_FILE"
+        export HF_HUB_ENABLE_HF_TRANSFER=1  # Enable faster downloads
+        if ! HUGGINGFACE_HUB_CACHE=/workspace/cache/huggingface \
+             poetry run huggingface-cli download --resume-download --local-dir-use-symlinks False \
+             Wan-AI/Wan2.1-T2V-1.3B --local-dir "$temp_dir" 2>&1 | tee -a "$LOG_FILE"; then
+            echo "Download failed. Cleaning up and retrying..." | tee -a "$LOG_FILE"
+            cleanup_temp_files
+            if ! HUGGINGFACE_HUB_CACHE=/workspace/cache/huggingface \
+                 poetry run huggingface-cli download --resume-download --local-dir-use-symlinks False \
+                 Wan-AI/Wan2.1-T2V-1.3B --local-dir "$temp_dir" 2>&1 | tee -a "$LOG_FILE"; then
+                echo "Download failed after cleanup. Please check your network connection and space." | tee -a "$LOG_FILE"
+                return 1
+            fi
+        fi
+        
+        echo "Download completed. Verifying downloaded files..." | tee -a "$LOG_FILE"
+        ls -la "$temp_dir" | tee -a "$LOG_FILE"
         
         # Move only missing components
         for component in "${missing_components[@]}"; do
+            echo "Processing component: $component" | tee -a "$LOG_FILE"
             if [ -d "$temp_dir/$component" ]; then
                 echo "Moving $component to final location..." | tee -a "$LOG_FILE"
                 rm -rf "$MODEL_DIR/$component" 2>/dev/null || true
                 mv "$temp_dir/$component" "$MODEL_DIR/"
+                echo "Verifying moved component..." | tee -a "$LOG_FILE"
+                ls -la "$MODEL_DIR/$component" | tee -a "$LOG_FILE"
+            else
+                echo "Warning: Component $component not found in downloaded files" | tee -a "$LOG_FILE"
+                ls -R "$temp_dir" | tee -a "$LOG_FILE"
             fi
         done
         
         # Cleanup
-        rm -rf "$temp_dir"
+        cleanup_temp_files
     else
         echo "All components are already present" | tee -a "$LOG_FILE"
     fi
