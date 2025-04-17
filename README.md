@@ -1,6 +1,45 @@
 # Wan Model Deployment on RunPod
 
-Quick instructions for generating videos using Wan2.1 on RunPod.
+## Quick Start: Generate Videos
+
+1. Set up shortcuts (do this once):
+```bash
+./scripts/utils/setup_shortcuts.sh
+```
+
+2. Generate videos using shortcuts:
+```bash
+wanv input.jpg            # Vertical video (480*832)
+wanh input.jpg            # Horizontal video (832*480)
+want "a sunset beach"     # Text-to-video with prompt
+
+# Add more frames:
+wanv -f 32 input.jpg     # 32 frames instead of default 16
+```
+
+Available shortcuts:
+- `wanv` - Vertical video (480*832)
+- `wanh` - Horizontal video (832*480)
+- `wanhd` - HD vertical (720*1280, only for 14B model)
+- `want` - Text-to-video (requires text prompt)
+
+See RUNPOD_README.md for detailed setup and advanced options.
+
+## Supported Formats
+
+### 1.3B Model (Faster)
+- 480*832 (vertical)
+- 832*480 (horizontal)
+
+### 14B Model (Better Quality)
+- 480*832, 832*480
+- 720*1280, 1280*720
+- 1024*1024 (square)
+
+## Important Notes
+- Use `*` not `x` in size parameters (e.g., `480*832`)
+- HD sizes (720*1280) only work with 14B model
+- First run might be slower due to model loading
 
 ## Generating Videos
 

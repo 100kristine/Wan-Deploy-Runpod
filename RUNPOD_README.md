@@ -5,7 +5,28 @@
 - Network volume mounted at `/workspace/models`
 - Base image: `kiihara/wan-deploy:cuda12.5`
 
-## Setup Options
+## Script Organization
+
+Our scripts are organized into three categories:
+
+### Setup Scripts (`scripts/setup/`)
+- Initial environment setup
+- Model downloads
+- Wan2.1 environment configuration
+
+### Run Scripts (`scripts/run/`)
+Convenience scripts for common operations:
+```bash
+# Quick video generation (small size)
+./scripts/run/video_small.sh input.jpg              # Default: 480*832
+./scripts/run/video_small.sh -s "720*1280" input.jpg  # Larger size
+./scripts/run/video_small.sh -t "t2v-1.3B" input.jpg  # Text to video
+```
+
+### Utility Scripts (`scripts/utils/`)
+Helper scripts for maintenance and debugging.
+
+## Setup Instructions
 
 ### Option 1: Quick Start (Individual Scripts)
 ```bash
@@ -14,63 +35,89 @@ git clone https://github.com/100kristine/Wan-Deploy-Runpod.git
 cd Wan-Deploy-Runpod/scripts
 
 # 2. Run initialization script
-chmod +x init_setup.sh setup_wan_poetry.sh
-./init_setup.sh
+chmod +x setup/init_setup.sh setup/setup_wan_poetry.sh
+./setup/init_setup.sh
 
 # 3. Run setup scripts
-./setup_env.sh
-./setup_models.sh
+./setup/setup_env.sh
+./setup/setup_models.sh
 
 # 4. Clone and setup Wan2.1
 cd /workspace
 git clone https://github.com/Wan-Video/Wan2.1
-./Wan-Deploy-Runpod/scripts/setup_wan_poetry.sh  # This creates and sets up the virtual environment
+./Wan-Deploy-Runpod/scripts/setup/setup_wan_poetry.sh  # Creates and configures virtual environment
 ```
 
 ### Option 2: All-in-One Setup (Beta)
-⚠️ Note: This option is still being tested and may not work in all environments.
 ```bash
-git clone https://github.com/100kristine/Wan-Deploy-Runpod.git
-cd Wan-Deploy-Runpod/scripts
-chmod +x run_all.sh
-./run_all.sh
+./scripts/run_all.sh
 ```
 
-## Running Image-to-Video Generation
+## Running Video Generation
 
-### Quick Start Command
-Use this one-liner to activate the environment and cd to the right directory:
+### Quick Start (One-liner to activate environment)
 ```bash
 cd /workspace/Wan2.1 && source .venv/bin/activate
 ```
 
-### Generate Videos
-After activating the environment:
+### Available Video Sizes
+- 480*832 (portrait, recommended)
+- 832*480 (landscape)
+- 720*1280 (HD portrait)
+- 1280*720 (HD landscape)
+- 1024*1024 (square)
 
+### Generation Methods
+
+1. Using shortcuts (easiest):
 ```bash
-# For 1.3B model (faster, works on consumer GPUs):
-python generate.py --task i2v-1.3B --size 480x832 \
+# First, set up shortcuts (only needed once per pod)
+./scripts/utils/setup_shortcuts.sh
+
+# Then use the shortcuts:
+wanv input.jpg            # Vertical video (480*832)
+wanh input.jpg            # Horizontal video (832*480)
+wanhd input.jpg           # HD vertical video (720*1280)
+want "a cat dancing"      # Text-to-video
+
+# All shortcuts support additional options:
+wanv -f 32 input.jpg     # 32 frames
+wanh --frames 24 input.jpg  # 24 frames
+```
+
+2. Using convenience script:
+```bash
+./scripts/run/video_small.sh input.jpg                    # Default (vertical)
+./scripts/run/video_small.sh -s vertical input.jpg        # Same as above
+./scripts/run/video_small.sh -s hdv input.jpg            # HD vertical
+./scripts/run/video_small.sh -s square input.jpg         # Square format
+./scripts/run/video_small.sh -t "t2v-1.3B" "cat dancing" # Text to video
+./scripts/run/video_small.sh --help                      # Show all options
+```
+
+Resolution shortcuts:
+- `vertical`, `v`, `portrait`, `p` → 480*832
+- `horizontal`, `h`, `landscape`, `l` → 832*480
+- `hdv`, `hd-vertical` → 720*1280
+- `hdh`, `hd-horizontal` → 1280*720
+- `square`, `s` → 1024*1024
+
+3. Manual command (for advanced options):
+```bash
+# Activate environment if needed
+source /workspace/Wan2.1/.venv/bin/activate
+
+# Generate video
+python generate.py --task i2v-1.3B --size 480*832 \
   --ckpt_dir /workspace/models/Wan2.1-T2V-1.3B \
-  --image_path path/to/your/image.jpg
-
-# For 14B model (better quality, requires more VRAM):
-python generate.py --task i2v-14B --size 480x832 \
-  --ckpt_dir /workspace/models/Wan2.1-T2V-14B \
-  --image_path path/to/your/image.jpg \
-  --offload_model True  # Use this if running out of VRAM
+  --image_path input.jpg \
+  --frame_num 16
 ```
 
-⚠️ **Important**: Always make sure you're in the virtual environment before running commands. You should see `(.venv)` at the start of your prompt. If not, run:
-```bash
-source /workspace/Wan2.1/.venv/activate
-```
-
-If you get a "No module named 'torch'" error:
-1. Make sure you're in the virtual environment (you should see `(.venv)` in your prompt)
-2. If you just created the virtual environment, run the setup script:
-```bash
-/workspace/Wan-Deploy-Runpod/scripts/setup_wan_poetry.sh
-```
+⚠️ **Important Notes**:
+1. Always use `*` not `x` in size parameters (e.g., `480*832` not `480x832`)
+2. Make sure you're in the virtual environment (should see `(.venv)` in prompt)
+3. First run might be slower due to model loading
 
 ## Detailed Steps
 
