@@ -1,3 +1,15 @@
+# ⚠️ IMPORTANT: KEEP THIS DOCKERFILE MINIMAL! ⚠️
+# This Dockerfile should contain only the absolute bare minimum requirements.
+# DO NOT add additional dependencies here - they should be installed via Poetry
+# during runtime setup instead. Adding dependencies here will significantly
+# increase build times, especially on Mac/non-Linux systems.
+#
+# If you need additional packages, add them to:
+# 1. scripts/init_setup.sh for system packages
+# 2. scripts/setup_wan_poetry.sh for Python packages
+#
+# This separation ensures fast builds while maintaining flexibility.
+
 FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
 
 # Ensure we're running on the correct architecture
@@ -9,7 +21,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     POETRY_HOME="/opt/poetry" \
     POETRY_VENV="/opt/poetry-venv" \
     POETRY_NO_INTERACTION=1 \
-    PROJECT_NAME="wan_deploy_runpod"
+    PROJECT_NAME="Wan-Deploy-Runpod"
 
 # Install Python and git (minimal dependencies)
 RUN apt-get update && apt-get install -y \
@@ -18,7 +30,6 @@ RUN apt-get update && apt-get install -y \
     git \
     openssh-server \
     tmux \
-    ninja-build \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -36,21 +47,17 @@ RUN poetry config virtualenvs.in-project true
 # Create and set workspace
 WORKDIR /workspace
 
-# Create pyproject.toml with correct naming
+# Create pyproject.toml with correct naming (matching GitHub repo)
 RUN echo '[tool.poetry]\n\
-name = "wan_deploy_runpod"\n\
+name = "Wan-Deploy-Runpod"\n\
 version = "0.1.0"\n\
-description = "Deployment scripts for Wan2.1 on RunPod"\n\
+description = "RunPod deployment template"\n\
 authors = ["RunPod User <user@runpod.io>"]\n\
 \n\
 [tool.poetry.dependencies]\n\
 python = "^3.10"\n\
 torch = "*"\n\
 transformers = "*"\n\
-huggingface-hub = "*"\n\
-accelerate = "*"\n\
-safetensors = "*"\n\
-flash-attn = "*"\n\
 \n\
 [build-system]\n\
 requires = ["poetry-core"]\n\

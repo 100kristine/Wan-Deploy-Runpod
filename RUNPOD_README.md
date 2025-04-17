@@ -5,19 +5,71 @@
 - Network volume mounted at `/workspace/models`
 - Base image: `kiihara/wan-deploy:cuda12.5`
 
-## Quick Start
+## Setup Options
+
+### Option 1: Quick Start (Individual Scripts)
 ```bash
 # 1. Clone deployment repository
 git clone https://github.com/100kristine/Wan-Deploy-Runpod.git
 cd Wan-Deploy-Runpod/scripts
 
 # 2. Run initialization script
-chmod +x init_setup.sh
+chmod +x init_setup.sh setup_wan_poetry.sh
 ./init_setup.sh
 
 # 3. Run setup scripts
 ./setup_env.sh
 ./setup_models.sh
+
+# 4. Clone and setup Wan2.1
+cd /workspace
+git clone https://github.com/Wan-Video/Wan2.1
+./Wan-Deploy-Runpod/scripts/setup_wan_poetry.sh  # This creates and sets up the virtual environment
+```
+
+### Option 2: All-in-One Setup (Beta)
+⚠️ Note: This option is still being tested and may not work in all environments.
+```bash
+git clone https://github.com/100kristine/Wan-Deploy-Runpod.git
+cd Wan-Deploy-Runpod/scripts
+chmod +x run_all.sh
+./run_all.sh
+```
+
+## Running Image-to-Video Generation
+
+### Quick Start Command
+Use this one-liner to activate the environment and cd to the right directory:
+```bash
+cd /workspace/Wan2.1 && source .venv/bin/activate
+```
+
+### Generate Videos
+After activating the environment:
+
+```bash
+# For 1.3B model (faster, works on consumer GPUs):
+python generate.py --task i2v-1.3B --size 480x832 \
+  --ckpt_dir /workspace/models/Wan2.1-T2V-1.3B \
+  --image_path path/to/your/image.jpg
+
+# For 14B model (better quality, requires more VRAM):
+python generate.py --task i2v-14B --size 480x832 \
+  --ckpt_dir /workspace/models/Wan2.1-T2V-14B \
+  --image_path path/to/your/image.jpg \
+  --offload_model True  # Use this if running out of VRAM
+```
+
+⚠️ **Important**: Always make sure you're in the virtual environment before running commands. You should see `(.venv)` at the start of your prompt. If not, run:
+```bash
+source /workspace/Wan2.1/.venv/activate
+```
+
+If you get a "No module named 'torch'" error:
+1. Make sure you're in the virtual environment (you should see `(.venv)` in your prompt)
+2. If you just created the virtual environment, run the setup script:
+```bash
+/workspace/Wan-Deploy-Runpod/scripts/setup_wan_poetry.sh
 ```
 
 ## Detailed Steps
@@ -29,58 +81,26 @@ The `init_setup.sh` script handles:
 - Configuring git
 - Making scripts executable
 
-If you need to run these steps manually:
-```bash
-# Install Poetry
-curl -sSL https://install.python-poetry.org | python3 -
-
-# Configure git
-git config --global user.name "100kristine"
-git config --global user.email "kristineyoshihara@gmail.com"
-```
-
 ### 2. Environment Setup
-```bash
-# Run environment setup script
-./setup_env.sh
+The `setup_env.sh` script:
+- Sets up Python environment with Poetry
+- Installs PyTorch and other dependencies
+- Caches the environment for faster reuse
 
-# Verify success
-poetry run python -c "import torch; print('PyTorch:', torch.__version__)"
-poetry run python -c "import flash_attn; print('Flash-attention installed')"
-```
+### 3. Model Setup
+The `setup_models.sh` script:
+- Downloads model files from Hugging Face
+- Verifies file integrity
+- Sets up proper directory structure
 
-Expected output:
-- PyTorch version should be 2.0.0 or higher
-- Flash-attention should be installed
-- A cached environment should be created at `/workspace/models/env_cache`
+### 4. Wan2.1 Setup
+The `setup_wan_poetry.sh` script:
+- Creates a dedicated virtual environment for Wan2.1
+- Uses setuptools (Wan2.1's native build system)
+- Installs all required dependencies
+- Keeps deployment and model environments separate
 
-### 3. Model Storage Setup
-```bash
-# Run model setup script
-./setup_models.sh
-```
-
-Expected output:
-- Should verify all model files are present
-- Should successfully load T5 and VAE models
-- Directory structure at `/workspace/models/Wan2.1-T2V-14B/` should contain:
-  ```
-  ├── t5_tokenizer/
-  ├── t5_checkpoint/
-  ├── vae_checkpoint/
-  └── clip_checkpoint/
-  ```
-
-### 4. Basic Generation Test
-```bash
-# Generate a test video
-cd ..  # Return to Wan-Deploy-Runpod root directory
-poetry run python generate.py --task t2v-14B --frame_num 16 --size '480x832'
-```
-
-Expected output:
-- Should generate a short test video
-- Monitor GPU memory usage (should be ~35GB for 720p)
+Note: Wan2.1 uses its own virtual environment with setuptools, separate from the deployment environment which uses Poetry. This separation ensures compatibility and prevents dependency conflicts.
 
 ## Troubleshooting
 
@@ -102,6 +122,29 @@ Expected output:
 - Start with smaller resolution (480p) for initial tests
 - Use `offload_model=True` if running into memory issues
 - Check GPU memory: `nvidia-smi`
+
+### Poetry/Dependencies Issues
+If you get dependency errors in the Wan2.1 environment:
+1. Make sure you've activated the correct environment: `source /workspace/Wan2.1/.venv/bin/activate`
+2. Try reinstalling dependencies: `pip install -r requirements.txt`
+3. If issues persist with flash-attn, try: `pip install flash-attn --no-build-isolation`
+
+### Model Loading Issues
+- Verify model files exist in `/workspace/models/Wan2.1-T2V-1.3B/`
+- Check file permissions
+- Try using `--offload_model True` for memory issues
+
+### File Transfer Issues
+If having trouble transferring files to RunPod:
+1. Use RunPod's web terminal file upload
+2. Use wget for files with public URLs
+3. Use base64 encoding for small files:
+   ```bash
+   # Local machine:
+   base64 file.jpg > file.b64
+   # Copy content, then on RunPod:
+   echo 'paste_content' | base64 -d > file.jpg
+   ```
 
 ## Logs Location
 - Environment setup: `/workspace/models/env_cache/setup.log`
