@@ -4,22 +4,51 @@
 - RunPod instance with A100/H100 (40GB+ VRAM)
 - Network volume mounted at `/workspace/models`
 - Base image: PyTorch 2.0+
+- Hugging Face token
 
 ## Quick Start
 ```bash
-# 1. Clone repositories
-git clone https://github.com/your-repo/Wan.git
-cd Wan
-git clone https://github.com/your-repo/Wan-Deploy-Runpod.git
-
-# 2. Make scripts executable
+# 1. Clone deployment repository
+git clone https://github.com/100kristine/Wan-Deploy-Runpod.git
 cd Wan-Deploy-Runpod/scripts
-chmod +x *.sh
+
+# 2. Set your Hugging Face token
+export HUGGING_FACE_TOKEN='your_token_here'
+
+# 3. Run initialization script
+chmod +x init_setup.sh
+./init_setup.sh
+
+# 4. Run setup scripts
+./setup_env.sh
+./setup_models.sh
 ```
 
-## Step-by-Step Deployment
+## Detailed Steps
 
-### 1. Environment Setup
+### 1. Initial Setup
+The `init_setup.sh` script handles:
+- Installing system dependencies
+- Setting up Poetry
+- Configuring git
+- Logging into Hugging Face
+- Making scripts executable
+
+If you need to run these steps manually:
+```bash
+# Install Poetry
+curl -sSL https://install.python-poetry.org | python3 -
+
+# Configure git
+git config --global user.name "Your Name"
+git config --global user.email "your.email@example.com"
+
+# Login to Hugging Face
+export HUGGING_FACE_TOKEN='your_token_here'
+poetry run huggingface-cli login --token "$HUGGING_FACE_TOKEN"
+```
+
+### 2. Environment Setup
 ```bash
 # Run environment setup script
 ./setup_env.sh
@@ -34,7 +63,7 @@ Expected output:
 - Flash-attention should be installed
 - A cached environment should be created at `/workspace/models/env_cache`
 
-### 2. Model Storage Setup
+### 3. Model Storage Setup
 ```bash
 # Run model setup script
 ./setup_models.sh
@@ -51,10 +80,10 @@ Expected output:
   └── clip_checkpoint/
   ```
 
-### 3. Basic Generation Test
+### 4. Basic Generation Test
 ```bash
 # Generate a test video
-cd ../..  # Return to Wan root directory
+cd ..  # Return to Wan-Deploy-Runpod root directory
 poetry run python generate.py --task t2v-14B --frame_num 16 --size '480x832'
 ```
 
@@ -63,6 +92,11 @@ Expected output:
 - Monitor GPU memory usage (should be ~35GB for 720p)
 
 ## Troubleshooting
+
+### Authentication Issues
+- For git: Check configuration with `git config --list`
+- For Hugging Face: Verify login with `poetry run huggingface-cli whoami`
+- If model download fails: Check your Hugging Face token permissions
 
 ### Environment Setup Issues
 - If environment setup fails, delete `.venv` and retry
@@ -73,6 +107,7 @@ Expected output:
 - Verify network volume is mounted: `df -h | grep /workspace/models`
 - Check model files exist and have correct permissions
 - Look for detailed errors in `/workspace/models/model_setup.log`
+- If model files are missing, rerun the model setup script
 
 ### Generation Issues
 - Start with smaller resolution (480p) for initial tests

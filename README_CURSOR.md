@@ -9,29 +9,41 @@
 ## Goals Checklist
 - [ ] Setup and install on RunPod instance
 - [ ] Configure network volume storage for efficient model loading
+- [ ] Download and verify model files from Hugging Face
 - [ ] Generate sample video output
 - [ ] Integrate with existing S3 pipeline
 
 ## Modular Installation Steps
 
-### Step 1: Python Environment Setup (Cacheable ✓)
-- [ ] Install Poetry
-- [ ] Basic dependencies installation
+### Step 0: Initial Setup (Cacheable ✓)
+- [ ] Install system dependencies and Poetry
+- [ ] Configure git and Hugging Face authentication
+- [ ] Set up Python environment
+**Test**: `poetry run huggingface-cli whoami`
+**Cache**: Git and HF credentials persist in container
+**Script**: `init_setup.sh` handles all of the above automatically
+
+### Step 1: Model Download (Cacheable ✓)
+- [ ] Download model files from Hugging Face
+- [ ] Verify model file structure
+**Test**: `ls /workspace/models/Wan2.1-T2V-14B/*checkpoint*`
+**Cache**: Models stay on network volume
+**Script**: Handled by `setup_models.sh`
+
+### Step 2: Environment Setup (Cacheable ✓)
+- [ ] Install dependencies through Poetry
 - [ ] Flash-attention setup
 **Test**: `poetry run python -c "import torch; print(torch.__version__)"` 
 **Cache**: Save virtual environment to network volume
-```bash
-# After successful setup:
-cp -r .venv /workspace/models/cached_venv
-```
+**Script**: `setup_env.sh`
 
-### Step 2: Model Storage (Cacheable ✓)
+### Step 3: Model Storage (Cacheable ✓)
 - [ ] Network volume mount
 - [ ] Model checkpoint structure verification
 **Test**: `ls /workspace/models/Wan2.1-T2V-14B/*checkpoint*`
 **Cache**: Models stay on network volume
 
-### Step 3: Basic Generation Test (Independent ✓)
+### Step 4: Basic Generation Test (Independent ✓)
 - [ ] Test with minimal example
 - [ ] Verify GPU memory usage
 **Test**: Generate 1-second test video
@@ -39,7 +51,7 @@ cp -r .venv /workspace/models/cached_venv
 poetry run python generate.py --task t2v-14B --frame_num 16 --size '480x832'
 ```
 
-### Step 4: Full Pipeline Integration
+### Step 5: Full Pipeline Integration
 - [ ] Connect to existing S3 pipeline
 - [ ] Test end-to-end workflow
 **Test**: Generate and verify upload of test video
@@ -51,6 +63,7 @@ poetry run python generate.py --task t2v-14B --frame_num 16 --size '480x832'
 2. S3 integration can be tested with small files
 3. GPU memory requirements can be estimated
 4. All setup scripts must be tested and verified locally first
+   - [x] init_setup.sh verified locally
    - [x] setup_env.sh verified locally
    - [x] setup_models.sh verified locally (with dummy files)
    Note: Model loading tests are skipped locally as they require actual model files and CUDA support
