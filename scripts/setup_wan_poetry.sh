@@ -5,11 +5,15 @@ echo "Setting up environment for Wan2.1..."
 
 cd /workspace/Wan2.1
 
-# Create a new virtual environment specifically for Wan2.1
-python3 -m venv .venv
+# If virtual environment doesn't exist, create it
+if [ ! -d ".venv" ]; then
+    echo "Creating new virtual environment..."
+    python3 -m venv .venv
+fi
+
 source .venv/bin/activate
 
-# Upgrade pip and install build tools
+# Upgrade pip and install build tools if needed
 pip install --upgrade pip setuptools wheel
 
 # Set up CUDA environment variables
@@ -24,28 +28,39 @@ if ! command -v nvcc &> /dev/null; then
     apt-get update && apt-get install -y cuda-toolkit-12-1
 fi
 
-# Install dependencies except flash-attn first
-pip install torch>=2.4.0 \
-    torchvision>=0.19.0 \
-    opencv-python>=4.9.0.80 \
-    diffusers>=0.31.0 \
-    transformers>=4.49.0 \
-    tokenizers>=0.20.3 \
-    accelerate>=1.1.1 \
-    tqdm \
-    imageio \
-    easydict \
-    ftfy \
-    dashscope \
-    imageio-ffmpeg \
-    gradio>=5.0.0 \
-    numpy>=1.23.5
+# Install dependencies only if they're not already installed
+if ! python -c "import torch" 2>/dev/null; then
+    echo "Installing dependencies from requirements.txt..."
+    pip install -r requirements.txt
+else
+    echo "✓ Dependencies already installed"
+fi
 
-# Install flash-attn with specific configuration
-echo "Installing flash-attn..."
-TORCH_CUDA_ARCH_LIST="7.5 8.0 8.6" pip install flash-attn --no-build-isolation
+# Install flash-attn only if not already installed
+if ! python -c "import flash_attn" 2>/dev/null; then
+    echo "Installing flash-attn..."
+    TORCH_CUDA_ARCH_LIST="7.5 8.0 8.6" pip install flash-attn --no-build-isolation
+else
+    echo "✓ flash-attn already installed"
+fi
 
-# Now install Wan2.1 in development mode
-pip install -e .
+# Now install Wan2.1 in development mode using setuptools directly
+echo "Installing Wan2.1..."
+# Create a temporary setup.py if it doesn't exist
+if [ ! -f "setup.py" ]; then
+    echo "Creating setup.py..."
+    cat > setup.py << 'EOL'
+from setuptools import setup, find_packages
+
+setup(
+    name="wan",
+    version="2.1.0",
+    packages=find_packages(),
+    install_requires=open("requirements.txt").read().splitlines()
+)
+EOL
+fi
+
+python setup.py develop --no-deps  # --no-deps prevents reinstalling dependencies
 
 echo "✓ Wan2.1 environment setup complete!" 
