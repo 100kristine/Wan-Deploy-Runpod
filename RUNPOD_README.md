@@ -3,8 +3,7 @@
 ## Prerequisites
 - RunPod instance with A100/H100 (40GB+ VRAM)
 - Network volume mounted at `/workspace/models`
-- Base image: PyTorch 2.0+
-- Hugging Face token
+- Base image: `kiihara/wan-deploy:cuda12.5`
 
 ## Quick Start
 ```bash
@@ -12,14 +11,11 @@
 git clone https://github.com/100kristine/Wan-Deploy-Runpod.git
 cd Wan-Deploy-Runpod/scripts
 
-# 2. Set your Hugging Face token
-export HUGGING_FACE_TOKEN='your_token_here'
-
-# 3. Run initialization script
+# 2. Run initialization script
 chmod +x init_setup.sh
 ./init_setup.sh
 
-# 4. Run setup scripts
+# 3. Run setup scripts
 ./setup_env.sh
 ./setup_models.sh
 ```
@@ -31,7 +27,6 @@ The `init_setup.sh` script handles:
 - Installing system dependencies
 - Setting up Poetry
 - Configuring git
-- Logging into Hugging Face
 - Making scripts executable
 
 If you need to run these steps manually:
@@ -42,10 +37,6 @@ curl -sSL https://install.python-poetry.org | python3 -
 # Configure git
 git config --global user.name "Your Name"
 git config --global user.email "your.email@example.com"
-
-# Login to Hugging Face
-export HUGGING_FACE_TOKEN='your_token_here'
-poetry run huggingface-cli login --token "$HUGGING_FACE_TOKEN"
 ```
 
 ### 2. Environment Setup
@@ -95,8 +86,6 @@ Expected output:
 
 ### Authentication Issues
 - For git: Check configuration with `git config --list`
-- For Hugging Face: Verify login with `poetry run huggingface-cli whoami`
-- If model download fails: Check your Hugging Face token permissions
 
 ### Environment Setup Issues
 - If environment setup fails, delete `.venv` and retry

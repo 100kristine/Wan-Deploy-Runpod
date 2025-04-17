@@ -66,10 +66,13 @@ description = "Deployment scripts for Wan2.1 on RunPod"
 authors = ["Your Name <your.email@example.com>"]
 
 [tool.poetry.dependencies]
-python = "^3.10"
-huggingface-hub = "^0.30.2"
-torch = "^2.0.0"
-transformers = "^4.30.0"
+python = "^3.11"
+huggingface-hub = "^0.21.1"
+torch = "^2.2.0"
+transformers = "^4.37.2"
+accelerate = "^0.27.0"
+safetensors = "^0.4.2"
+bitsandbytes = "^0.42.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -90,17 +93,6 @@ fi
 
 # Cache git configuration
 git config --global --list > "$CACHE_DIR/git_config"
-
-# Check for Hugging Face token
-if [ -z "$HUGGING_FACE_TOKEN" ]; then
-    echo "Hugging Face token not found."
-    echo "Please set your token: export HUGGING_FACE_TOKEN='your_token'"
-    exit 1
-fi
-
-# Login to Hugging Face using the token
-echo "Logging into Hugging Face..."
-poetry run huggingface-cli login --token "$HUGGING_FACE_TOKEN"
 
 # Make all scripts executable
 chmod +x *.sh
