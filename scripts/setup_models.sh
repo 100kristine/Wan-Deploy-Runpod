@@ -4,11 +4,11 @@ set -e  # Exit on any error
 # Check if we're in local test mode
 if [ "$LOCAL_TEST" = "true" ]; then
     NETWORK_VOLUME="./local_test_models"
-    MODEL_DIR="$NETWORK_VOLUME/Wan2.1-T2V-14B"
+    MODEL_DIR="$NETWORK_VOLUME/Wan2.1-T2V-1.3B"
     echo "Running in local test mode - using dummy model files"
 else
     NETWORK_VOLUME="/workspace"
-    MODEL_DIR="$NETWORK_VOLUME/models/Wan2.1-T2V-14B"
+    MODEL_DIR="$NETWORK_VOLUME/models/Wan2.1-T2V-1.3B"
 fi
 
 # Create log directory
@@ -17,15 +17,56 @@ LOG_FILE="$NETWORK_VOLUME/models/model_setup.log"
 
 echo "Step 2: Model Storage Setup" | tee -a "$LOG_FILE"
 
+# Function to check if a specific model component exists and is valid
+check_model_component() {
+    local component=$1
+    if [ ! -d "$MODEL_DIR/$component" ] || [ -z "$(ls -A $MODEL_DIR/$component 2>/dev/null)" ]; then
+        echo "false"
+    else
+        echo "true"
+    fi
+}
+
 # Function to download model files if needed
 download_model_files() {
-    if [ ! -d "$MODEL_DIR" ] || [ -z "$(ls -A $MODEL_DIR 2>/dev/null)" ]; then
-        echo "Creating model directory..." | tee -a "$LOG_FILE"
-        mkdir -p "$MODEL_DIR"
-        echo "Downloading model files..." | tee -a "$LOG_FILE"
-        poetry run huggingface-cli download Wan-AI/Wan2.1-T2V-14B --local-dir "$MODEL_DIR"
+    local temp_dir="/tmp/wan_model_download"
+    mkdir -p "$MODEL_DIR"
+    
+    # Define required components
+    local components=("t5_tokenizer" "t5_checkpoint" "vae_checkpoint" "clip_checkpoint")
+    local missing_components=()
+    
+    # Check which components are missing
+    for component in "${components[@]}"; do
+        if [ "$(check_model_component $component)" = "false" ]; then
+            missing_components+=($component)
+            echo "Missing component: $component" | tee -a "$LOG_FILE"
+        else
+            echo "Component already exists: $component" | tee -a "$LOG_FILE"
+        fi
+    done
+    
+    # If any components are missing, download them
+    if [ ${#missing_components[@]} -gt 0 ]; then
+        echo "Downloading missing model components..." | tee -a "$LOG_FILE"
+        mkdir -p "$temp_dir"
+        
+        # Download to temporary directory - using 1.3B model
+        poetry run huggingface-cli download Wan-AI/Wan2.1-T2V-1.3B --local-dir "$temp_dir"
+        
+        # Move only missing components
+        for component in "${missing_components[@]}"; do
+            if [ -d "$temp_dir/$component" ]; then
+                echo "Moving $component to final location..." | tee -a "$LOG_FILE"
+                rm -rf "$MODEL_DIR/$component" 2>/dev/null || true
+                mv "$temp_dir/$component" "$MODEL_DIR/"
+            fi
+        done
+        
+        # Cleanup
+        rm -rf "$temp_dir"
     else
-        echo "Model directory already exists and is not empty" | tee -a "$LOG_FILE"
+        echo "All components are already present" | tee -a "$LOG_FILE"
     fi
 }
 
@@ -47,14 +88,23 @@ verify_models() {
         "vae_checkpoint"
         "clip_checkpoint"
     )
+    local missing=0
     
     echo "Verifying model files..." | tee -a "$LOG_FILE"
     for file in "${required_files[@]}"; do
-        if [ ! -e "$MODEL_DIR/$file" ]; then
-            echo "× Missing required model file: $file" | tee -a "$LOG_FILE"
-            return 1
+        if [ "$(check_model_component $file)" = "false" ]; then
+            echo "× Missing or empty required model component: $file" | tee -a "$LOG_FILE"
+            missing=1
+        else
+            echo "✓ Found model component: $file" | tee -a "$LOG_FILE"
         fi
     done
+    
+    if [ $missing -eq 1 ]; then
+        echo "Some components are missing or empty. Will attempt to download them." | tee -a "$LOG_FILE"
+        return 1
+    fi
+    
     echo "✓ All required model files present" | tee -a "$LOG_FILE"
     return 0
 }
@@ -108,28 +158,31 @@ fi
 # Create models directory
 mkdir -p "$(dirname "$MODEL_DIR")"
 
-# Download or create model files
-if [ "$LOCAL_TEST" = "true" ]; then
-    create_dummy_files
-else
-    download_model_files
-fi
-
-# Verify model files
-if ! verify_models; then
-    echo "Please ensure all model files are present in $MODEL_DIR" | tee -a "$LOG_FILE"
-    echo "Required structure:" | tee -a "$LOG_FILE"
-    echo "  $MODEL_DIR/" | tee -a "$LOG_FILE"
-    echo "  ├── t5_tokenizer/" | tee -a "$LOG_FILE"
-    echo "  ├── t5_checkpoint/" | tee -a "$LOG_FILE"
-    echo "  ├── vae_checkpoint/" | tee -a "$LOG_FILE"
-    echo "  └── clip_checkpoint/" | tee -a "$LOG_FILE"
-    exit 1
-fi
+# Main process: verify, download missing, verify again
+while true; do
+    if verify_models; then
+        break
+    fi
+    
+    if [ "$LOCAL_TEST" = "true" ]; then
+        create_dummy_files
+    else
+        download_model_files
+    fi
+    
+    # Break if we've downloaded everything but verification still fails
+    # This prevents infinite loops if there's a persistent issue
+    if ! verify_models; then
+        echo "Warning: Some model files are still missing after download attempt." | tee -a "$LOG_FILE"
+        echo "You may need to manually verify the model files or retry the setup." | tee -a "$LOG_FILE"
+        break
+    fi
+done
 
 # Test model loading
 if ! test_model_loading; then
     echo "× Model loading test failed" | tee -a "$LOG_FILE"
+    echo "Warning: Model files exist but loading test failed. You may need to manually verify the model files." | tee -a "$LOG_FILE"
     exit 1
 fi
 
