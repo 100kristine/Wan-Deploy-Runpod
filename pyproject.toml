@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "wan-deploy-runpod"
+version = "0.1.0"
+description = "Deployment scripts for Wan2.1 on RunPod"
+authors = ["Your Name <your.email@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+torch = "^2.0.0"
+transformers = "^4.30.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api" 

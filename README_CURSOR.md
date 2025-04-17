@@ -50,6 +50,10 @@ poetry run python generate.py --task t2v-14B --frame_num 16 --size '480x832'
 1. Environment setup can be tested locally
 2. S3 integration can be tested with small files
 3. GPU memory requirements can be estimated
+4. All setup scripts must be tested and verified locally first
+   - [x] setup_env.sh verified locally
+   - [x] setup_models.sh verified locally (with dummy files)
+   Note: Model loading tests are skipped locally as they require actual model files and CUDA support
 
 ### RunPod Testing
 1. Test network volume mounting first
