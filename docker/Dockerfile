@@ -14,8 +14,15 @@ RUN apt-get update && apt-get install -y \
     python3.10 \
     python3-pip \
     git \
+    openssh-server \
+    tmux \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Setup SSH for web terminal
+RUN mkdir /var/run/sshd && \
+    echo 'root:runpod' | chpasswd && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 
 # Install Poetry
 RUN python3 -m pip install --no-cache-dir poetry==${POETRY_VERSION}
@@ -26,6 +33,20 @@ RUN poetry config virtualenvs.in-project true
 # Create and set workspace
 WORKDIR /workspace
 
+# Create startup script
+RUN echo '#!/bin/bash\n\
+service ssh start\n\
+echo "🚀 Container is ready!"\n\
+# Keep container running\n\
+tail -f /dev/null' > /startup.sh && \
+    chmod +x /startup.sh
+
 # Add a healthcheck that verifies both NVIDIA runtime and architecture
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD nvidia-smi && [ "$(uname -m)" = "x86_64" ] || exit 1 
+    CMD nvidia-smi && [ "$(uname -m)" = "x86_64" ] || exit 1
+
+# Expose SSH port
+EXPOSE 22
+
+# Set the entry point
+ENTRYPOINT ["/startup.sh"] 
