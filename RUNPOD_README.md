@@ -9,21 +9,21 @@
 
 Our scripts are organized into three categories:
 
-### Setup Scripts (`scripts/setup/`)
+### Setup Scripts (`runpod_video_pipeline/scripts/setup/`)
 - Initial environment setup
 - Model downloads
 - Wan2.1 environment configuration
 
-### Run Scripts (`scripts/run/`)
+### Run Scripts (`runpod_video_pipeline/scripts/run/`)
 Convenience scripts for common operations:
 ```bash
 # Quick video generation (small size)
-./scripts/run/video_small.sh input.jpg              # Default: 480*832
-./scripts/run/video_small.sh -s "720*1280" input.jpg  # Larger size
-./scripts/run/video_small.sh -t "t2v-1.3B" input.jpg  # Text to video
+./runpod_video_pipeline/scripts/run/video_small.sh input.jpg              # Default: 480*832
+./runpod_video_pipeline/scripts/run/video_small.sh -s "720*1280" input.jpg  # Larger size
+./runpod_video_pipeline/scripts/run/video_small.sh -t "t2v-1.3B" input.jpg  # Text to video
 ```
 
-### Utility Scripts (`scripts/utils/`)
+### Utility Scripts (`runpod_video_pipeline/scripts/utils/`)
 Helper scripts for maintenance and debugging.
 
 ## Setup Instructions
@@ -32,20 +32,20 @@ Helper scripts for maintenance and debugging.
 ```bash
 # 1. Clone deployment repository
 git clone https://github.com/100kristine/Wan-Deploy-Runpod.git
-cd Wan-Deploy-Runpod/scripts
+cd Wan-Deploy-Runpod
 
 # 2. Run initialization script
-chmod +x setup/init_setup.sh setup/setup_wan_poetry.sh
-./setup/init_setup.sh
+chmod +x runpod_video_pipeline/scripts/setup/init_setup.sh runpod_video_pipeline/scripts/setup/setup_wan_github_dependencies.sh
+./runpod_video_pipeline/scripts/setup/init_setup.sh
 
 # 3. Run setup scripts
-./setup/setup_env.sh
-./setup/setup_models.sh
+./runpod_video_pipeline/scripts/setup/setup_env.sh
+./runpod_video_pipeline/scripts/setup/setup_models.sh
 
 # 4. Clone and setup Wan2.1
 cd /workspace
 git clone https://github.com/Wan-Video/Wan2.1
-./Wan-Deploy-Runpod/scripts/setup/setup_wan_poetry.sh  # Creates and configures virtual environment
+./Wan-Deploy-Runpod/runpod_video_pipeline/scripts/setup/setup_wan_github_dependencies.sh  # Creates and configures virtual environment
 ```
 
 ### Option 2: All-in-One Setup (Beta)
@@ -72,9 +72,9 @@ cd /workspace/Wan2.1 && source .venv/bin/activate
 1. Using shortcuts (easiest):
 ```bash
 # First, set up shortcuts (only needed once per pod)
-./scripts/utils/setup_shortcuts.sh
+./runpod_video_pipeline/scripts/utils/setup_shortcuts.sh
 
-# Then use the shortcuts:
+# Then use the shortcuts (from any directory):
 wanv input.jpg            # Vertical video (480*832)
 wanh input.jpg            # Horizontal video (832*480)
 wanhd input.jpg           # HD vertical video (720*1280)
@@ -86,13 +86,19 @@ wanh --frames 24 input.jpg  # 24 frames
 ```
 
 2. Using convenience script:
+First, change to the Wan2.1 directory:
 ```bash
-./scripts/run/video_small.sh input.jpg                    # Default (vertical)
-./scripts/run/video_small.sh -s vertical input.jpg        # Same as above
-./scripts/run/video_small.sh -s hdv input.jpg            # HD vertical
-./scripts/run/video_small.sh -s square input.jpg         # Square format
-./scripts/run/video_small.sh -t "t2v-1.3B" "cat dancing" # Text to video
-./scripts/run/video_small.sh --help                      # Show all options
+cd /workspace/Wan2.1
+```
+
+Then run any of these commands:
+```bash
+video_small.sh input.jpg                    # Default (vertical)
+video_small.sh -s vertical input.jpg        # Same as above
+video_small.sh -s hdv input.jpg            # HD vertical
+video_small.sh -s square input.jpg         # Square format
+video_small.sh -t "t2v-1.3B" "cat dancing" # Text to video
+video_small.sh --help                      # Show all options
 ```
 
 Resolution shortcuts:
