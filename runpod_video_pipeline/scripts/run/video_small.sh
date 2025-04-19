@@ -1,30 +1,32 @@
 #!/bin/bash
-set -e
 
 # Load environment variables from .env if it exists
 if [[ -f .env ]]; then
     echo "Loading environment variables from .env..."
-    export $(cat .env | grep -v '^#' | xargs)
+    source .env || { echo "Error: Failed to load .env file"; exit 1; }
 fi
 
 # Activate Wan2.1 environment if not already activated
 if [[ "$VIRTUAL_ENV" != *"/workspace/Wan2.1/.venv"* ]]; then
-    source /workspace/Wan2.1/.venv/bin/activate
+    if [[ -f /workspace/Wan2.1/.venv/bin/activate ]]; then
+        source /workspace/Wan2.1/.venv/bin/activate || { echo "Error: Failed to activate virtual environment"; exit 1; }
+    else
+        echo "Warning: Wan2.1 virtual environment not found at /workspace/Wan2.1/.venv"
+    fi
 fi
 
 # Change to Wan2.1 directory
-cd /workspace/Wan2.1
+cd /workspace/Wan2.1 || { echo "Error: Failed to change to Wan2.1 directory"; exit 1; }
 
 # Default values
 SIZE="480*832"
 TASK="i2v-1.3B"
 FRAME_NUM=16
-DEFAULT_PROMPT="a person smiling in slow motion"  # Practical default for testing
 UPLOAD_TO_S3=false
 TEMP_DIR="/tmp/wan_video_temp"
 
 # Create temp directory if it doesn't exist
-mkdir -p "$TEMP_DIR"
+mkdir -p "$TEMP_DIR" || { echo "Error: Failed to create temp directory"; exit 1; }
 
 # Cleanup function
 cleanup() {
@@ -78,22 +80,22 @@ get_resolution() {
 
 # Help message
 show_help() {
-    echo "Usage: $0 --image <image_path> [options]"
+    echo "Usage: $0 --image <image_path> --prompt <text> [options]"
     echo ""
     echo "Required arguments:"
     echo "  --image <path>     Path to input image (required)"
+    echo "  --prompt <text>    Prompt to guide video generation (required)"
     echo ""
     echo "Optional arguments:"
-    echo "  --prompt <text>    Prompt to guide video generation (default: 'moving...')"
     echo "  --frames <number>  Number of frames to generate (default: 50)"
     echo "  --size <size>      Video size in format WIDTHxHEIGHT (default: 480*832)"
     echo "  --upload-to-s3     Upload video to S3 (default: false)"
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
-    echo "  $0 --image input.jpg"
+    echo "  $0 --image input.jpg --prompt 'zooming into the sunset'"
     echo "  $0 --image input.jpg --prompt 'zooming into the sunset' --frames 80"
-    echo "  $0 --image input.jpg --size 832*480  # Horizontal format"
+    echo "  $0 --image input.jpg --prompt 'zooming into the sunset' --size 832*480"
     exit 1
 }
 
@@ -130,16 +132,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check for required image parameter
+# Check for required parameters
 if [ -z "$IMAGE" ]; then
     echo "Error: --image parameter is required"
     show_help
 fi
 
-# Check for empty prompt
 if [ -z "$PROMPT" ]; then
-    echo "Error: --prompt parameter cannot be empty"
-    exit 1
+    echo "Error: --prompt parameter is required"
+    show_help
 fi
 
 # Check if image exists
@@ -158,7 +159,7 @@ echo "- Upload to S3: $UPLOAD_TO_S3"
 echo ""
 
 # Run with nohup and redirect output to a log file
-nohup python generate.py \
+if ! nohup python generate.py \
     --task i2v-1.3B \
     --ckpt_dir /workspace/models/Wan2.1-T2V-1.3B \
     --size "$SIZE" \
@@ -166,15 +167,23 @@ nohup python generate.py \
     --image "$IMAGE" \
     --prompt "$PROMPT" \
     > video_generation.log 2>&1 &
+then
+    echo "Error: Failed to start video generation"
+    exit 1
+fi
 
 # Store the process ID
 PID=$!
 
 # Wait for the process to complete
-wait $PID
+wait $PID || {
+    echo "Error: Video generation process failed"
+    echo "Check video_generation.log for details"
+    exit 1
+}
 
 # Ring bell once for video completion
-"$(dirname "$0")/../utils/notify.sh" 1
+"$(dirname "$0")/../utils/notify.sh" 1 || echo "Warning: Failed to send notification"
 
 # Upload to S3 if requested
 if [[ "$UPLOAD_TO_S3" = true ]]; then
@@ -184,5 +193,8 @@ if [[ "$UPLOAD_TO_S3" = true ]]; then
     else
         OUTPUT_DIR="outputs/i2v"
     fi
-    "$(dirname "$0")/upload_s3.sh" "$OUTPUT_DIR"
+    if ! "$(dirname "$0")/upload_s3.sh" "$OUTPUT_DIR"; then
+        echo "Error: Failed to upload to S3"
+        exit 1
+    fi
 fi 
