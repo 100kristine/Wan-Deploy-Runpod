@@ -87,6 +87,7 @@ show_help() {
     echo "  --prompt <text>    Prompt to guide video generation (default: 'moving...')"
     echo "  --frames <number>  Number of frames to generate (default: 50)"
     echo "  --size <size>      Video size in format WIDTHxHEIGHT (default: 480*832)"
+    echo "  --upload-to-s3     Upload video to S3 (default: false)"
     echo "  -h, --help        Show this help message"
     echo ""
     echo "Examples:"
@@ -113,6 +114,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --size)
             SIZE="$2"
+            shift 2
+            ;;
+        --upload-to-s3)
+            UPLOAD_TO_S3="$2"
             shift 2
             ;;
         -h|--help)
@@ -149,6 +154,7 @@ echo "- Image: $IMAGE"
 echo "- Prompt: $PROMPT"
 echo "- Frames: $FRAMES"
 echo "- Size: $SIZE"
+echo "- Upload to S3: $UPLOAD_TO_S3"
 echo ""
 
 # Run with nohup and redirect output to a log file
@@ -173,6 +179,10 @@ wait $PID
 # Upload to S3 if requested
 if [[ "$UPLOAD_TO_S3" = true ]]; then
     echo "Uploading to S3..."
-    OUTPUT_DIR="outputs/t2v"
+    if [[ "$TASK" == *"t2v"* ]]; then
+        OUTPUT_DIR="outputs/t2v"
+    else
+        OUTPUT_DIR="outputs/i2v"
+    fi
     "$(dirname "$0")/upload_s3.sh" "$OUTPUT_DIR"
 fi 
