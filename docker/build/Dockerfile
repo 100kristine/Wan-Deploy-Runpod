@@ -1,3 +1,21 @@
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# 🚫 DO NOT REMOVE OR MODIFY THESE ARCHITECTURE SETTINGS 🚫
+# These warnings and checks are critical for RunPod GPU support
+# Removing them will cause "Exec format error" on RunPod!
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#
+# If building on Mac/ARM, you MUST use these exact commands:
+# docker buildx create --use
+# docker buildx build --platform linux/amd64 -t kiihara/wan-deploy-runpod:latest . --push
+#
+# If you see these warnings, they are GOOD and expected:
+# - "FromPlatformFlagConstDisallowed"
+# - "Requested platform linux/arm64 does not match linux/amd64"
+#
+# These warnings mean the image will work on RunPod's NVIDIA GPUs!
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+# Standard minimalist warning
 # ⚠️ IMPORTANT: KEEP THIS DOCKERFILE MINIMAL! ⚠️
 # This Dockerfile should contain only the absolute bare minimum requirements.
 # DO NOT add additional dependencies here - they should be installed via Poetry
@@ -10,10 +28,18 @@
 #
 # This separation ensures fast builds while maintaining flexibility.
 
-FROM nvidia/cuda:12.1.1-devel-ubuntu22.04
+FROM --platform=linux/amd64 nvidia/cuda:12.1.1-devel-ubuntu22.04
 
-# Ensure we're running on the correct architecture
-RUN [ "$(uname -m)" = "x86_64" ] || (echo "❌ This container must run on x86_64/amd64" && false)
+# Triple-check architecture - DO NOT REMOVE THESE CHECKS!
+# These prevent silent failures on RunPod
+RUN set -ex; \
+    if [ "$(uname -m)" != "x86_64" ]; then \
+        echo "❌ FATAL: This container MUST run on x86_64/amd64 for NVIDIA GPU support"; \
+        echo "❌ Current architecture: $(uname -m)"; \
+        echo "❌ Did you build with: --platform linux/amd64 ?"; \
+        exit 1; \
+    fi; \
+    echo "✅ Architecture check passed: $(uname -m)"
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -23,15 +49,27 @@ ENV DEBIAN_FRONTEND=noninteractive \
     POETRY_NO_INTERACTION=1 \
     PROJECT_NAME="Wan-Deploy-Runpod"
 
-# Install Python and git (minimal dependencies)
+# Install Python, git, and essential development tools
 RUN apt-get update && apt-get install -y \
     python3.10 \
     python3-pip \
     git \
     openssh-server \
     tmux \
+    vim \
+    curl \
+    wget \
+    zip \
+    unzip \
+    build-essential \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Install AWS CLI v2
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
+    unzip awscliv2.zip && \
+    ./aws/install && \
+    rm -rf aws awscliv2.zip
 
 # Setup SSH for web terminal
 RUN mkdir /var/run/sshd && \

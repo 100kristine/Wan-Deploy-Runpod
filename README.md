@@ -11,63 +11,58 @@ This repository contains two main components:
 
 ## Quick Start: Generate Videos
 
-1. Set up environment (do this once):
+### Direct Command (Most Flexible)
 ```bash
-# Set up S3 configuration (optional)
-cp .env.template .env
-# Edit .env with your AWS credentials
+# Basic vertical video (480*832)
+python generate.py \
+    --task t2v-1.3B \
+    --ckpt_dir /workspace/models/Wan2.1-T2V-1.3B \
+    --size 480*832 \
+    --frame_num 50 \
+    --image input.jpg \
+    --prompt "moving..."
 
-# Set up shortcuts
-./runpod_video_pipeline/scripts/utils/setup_shortcuts.sh
+# Horizontal video (832*480)
+python generate.py \
+    --task t2v-1.3B \
+    --ckpt_dir /workspace/models/Wan2.1-T2V-1.3B \
+    --size 832*480 \
+    --frame_num 50 \
+    --image input.jpg \
+    --prompt "moving..."
 ```
 
-2. Generate videos using shortcuts:
+Required parameters:
+- `--image`: Path to your input image
+- `--task`: Always use `t2v-1.3B` for the 1.3B model
+- `--ckpt_dir`: Path to model directory
+- `--size`: Video dimensions (use `*` not `x`)
+- `--frame_num`: Number of frames to generate
+- `--prompt`: Text prompt to guide the video generation
+
+### Using Convenience Script
 ```bash
-# From local files:
-wanv input.jpg                    # Vertical video (480*832)
-wanh input.jpg                    # Horizontal video (832*480)
+# Basic usage
+./runpod_video_pipeline/scripts/run/video_small.sh --image input.jpg
 
-# From URLs:
-wanv https://example.com/img.jpg  # Download and generate from URL
-wanh https://example.com/img.jpg  # Same for horizontal
-
-# Text to video:
-want "a sunset beach"             # Text-to-video with prompt
-
-# Add more frames:
-wanv -f 32 input.jpg             # 32 frames instead of default 16
+# With custom settings
+./runpod_video_pipeline/scripts/run/video_small.sh \
+    --image input.jpg \
+    --prompt "zooming into the sunset" \
+    --frames 80 \
+    --size 832*480
 ```
 
-Available shortcuts:
-- `wanv` - Vertical video (480*832)
-- `wanh` - Horizontal video (832*480)
-- `wanhd` - HD vertical (720*1280, only for 14B model)
-- `want` - Text-to-video (requires text prompt)
-
-See RUNPOD_README.md for detailed setup and advanced options.
-
-## Supported Formats
-
-### 1.3B Model (Default, Pre-installed)
-- 480*832 (vertical)
-- 832*480 (horizontal)
-
-### 14B Model (Not Included)
-**NOTE: The 14B model is not included by default. You need to download it separately to use these features:**
-- 480*832, 832*480
-- 720*1280, 1280*720 (HD)
-- 1024*1024 (square)
-
-To use the 14B model, you'll need to:
-1. Download the model files
-2. Update the checkpoint path in the scripts
-3. Have sufficient VRAM (recommended: 24GB+)
+## Supported Formats (1.3B Model)
+- Vertical: 480*832 (default)
+- Horizontal: 832*480
 
 ## Important Notes
-- Use `*` not `x` in size parameters (e.g., `480*832`)
-- HD sizes (720*1280) require the 14B model (not included)
+- Always use `*` not `x` in size parameters (e.g., `480*832`)
+- The image parameter is required
+- Default prompt is "moving..." if not specified
+- Default frame count is 50 if not specified
 - First run might be slower due to model loading
-- You can use image URLs directly in commands
 
 ## Generating Videos
 
@@ -151,3 +146,21 @@ wans3 -p custom/path/ file.mp4 # Upload with custom S3 prefix
 
 ## Docker Build
 Docker-related files are in the `docker/build` directory. See `docker/build/README.md` for build instructions.
+
+## Quick Reference: Video Generation Commands
+
+### Generate Video from Image (1.3B Model)
+```bash
+# Vertical video (512x768) - 80 frames
+python generate.py --image_path "your_image.jpg" --task i2v --model_path /workspace/models/Wan2.1-T2V-1.3B --num_frames 80 --size 512x768
+
+# Horizontal video (768x512) - 80 frames
+python generate.py --image_path "your_image.jpg" --task i2v --model_path /workspace/models/Wan2.1-T2V-1.3B --num_frames 80 --size 768x512
+```
+
+Common parameters:
+- `--image_path`: Path to your input image
+- `--task`: Use `i2v` for image-to-video generation
+- `--model_path`: Path to the 1.3B model
+- `--num_frames`: Number of frames to generate (80 is good for marketing clips)
+- `--size`: Video dimensions (512x768 for vertical, 768x512 for horizontal)

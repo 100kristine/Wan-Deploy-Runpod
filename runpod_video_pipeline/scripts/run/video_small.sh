@@ -78,107 +78,94 @@ get_resolution() {
 
 # Help message
 show_help() {
-    echo "Usage: video_small.sh [options] <image_or_prompt>"
-    echo "Generate a video using Wan2.1 (1.3B model)"
+    echo "Usage: $0 --image <image_path> [options]"
     echo ""
-    echo "Options:"
-    echo "  -s, --size     Video size (default: vertical)"
-    echo "  -t, --task     Task type (default: i2v-1.3B)"
-    echo "  -f, --frames   Number of frames (default: 16)"
-    echo "  -p, --prompt   Text prompt for t2v"
-    echo "                 (default: '$DEFAULT_PROMPT')"
-    echo "  -u, --upload   Upload result to S3 (requires AWS env vars)"
-    echo "  -h, --help     Show this help message"
+    echo "Required arguments:"
+    echo "  --image <path>     Path to input image (required)"
     echo ""
-    echo "Available sizes:"
-    echo "  vertical, v    -> 480*832"
-    echo "  horizontal, h  -> 832*480"
+    echo "Optional arguments:"
+    echo "  --prompt <text>    Prompt to guide video generation (default: 'moving...')"
+    echo "  --frames <number>  Number of frames to generate (default: 50)"
+    echo "  --size <size>      Video size in format WIDTHxHEIGHT (default: 480*832)"
+    echo "  -h, --help        Show this help message"
     echo ""
-    echo "Available tasks: i2v-1.3B, t2v-1.3B"
-    echo ""
-    echo "Input can be:"
-    echo "  - Local file path"
-    echo "  - URL (will be downloaded automatically)"
-    echo "  - Text prompt (for t2v task)"
+    echo "Examples:"
+    echo "  $0 --image input.jpg"
+    echo "  $0 --image input.jpg --prompt 'zooming into the sunset' --frames 80"
+    echo "  $0 --image input.jpg --size 832*480  # Horizontal format"
+    exit 1
 }
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -s|--size)
-            SIZE=$(get_resolution "$2")
+        --image)
+            IMAGE="$2"
             shift 2
             ;;
-        -t|--task)
-            if [[ "$2" == *"14B"* ]]; then
-                echo "Error: 14B model not installed. Using 1.3B model."
-                TASK="${2/14B/1.3B}"
-            else
-                TASK="$2"
-            fi
-            shift 2
-            ;;
-        -f|--frames)
-            FRAME_NUM="$2"
-            shift 2
-            ;;
-        -p|--prompt)
+        --prompt)
             PROMPT="$2"
             shift 2
             ;;
-        -u|--upload)
-            UPLOAD_TO_S3=true
-            shift
+        --frames)
+            FRAMES="$2"
+            shift 2
+            ;;
+        --size)
+            SIZE="$2"
+            shift 2
             ;;
         -h|--help)
             show_help
-            exit 0
             ;;
         *)
-            if [[ "$TASK" == *"t2v"* ]]; then
-                PROMPT="$1"
-            else
-                IMAGE="$1"
-            fi
-            shift
+            echo "Unknown parameter: $1"
+            show_help
             ;;
     esac
 done
 
-# Set default prompt if none provided for t2v
-if [[ "$TASK" == *"t2v"* && -z "$PROMPT" ]]; then
-    PROMPT="$DEFAULT_PROMPT"
-    echo "No prompt provided, using default: $PROMPT"
+# Check for required image parameter
+if [ -z "$IMAGE" ]; then
+    echo "Error: --image parameter is required"
+    show_help
 fi
 
-# Validate input
-if [[ "$TASK" == *"i2v"* && -z "$IMAGE" ]]; then
-    echo "Error: Image-to-video requires an image path or URL"
-    show_help
+# Check for empty prompt
+if [ -z "$PROMPT" ]; then
+    echo "Error: --prompt parameter cannot be empty"
     exit 1
 fi
 
-# Download image if it's a URL
-if [[ "$TASK" == *"i2v"* ]]; then
-    IMAGE=$(download_image "$IMAGE")
+# Check if image exists
+if [ ! -f "$IMAGE" ] && [[ ! "$IMAGE" =~ ^https?:// ]]; then
+    echo "Error: Image file '$IMAGE' not found and not a URL"
+    exit 1
 fi
 
-# Run generation
-if [[ "$TASK" == *"t2v"* ]]; then
-    python generate.py \
-        --task "$TASK" \
-        --size "$SIZE" \
-        --ckpt_dir "/workspace/models/Wan2.1-T2V-1.3B" \
-        --prompt "$PROMPT" \
-        --frame_num "$FRAME_NUM"
-else
-    python generate.py \
-        --task "$TASK" \
-        --size "$SIZE" \
-        --ckpt_dir "/workspace/models/Wan2.1-T2V-1.3B" \
-        --image "$IMAGE" \
-        --frame_num "$FRAME_NUM"
-fi
+# Run the generation command
+echo "Generating video with settings:"
+echo "- Image: $IMAGE"
+echo "- Prompt: $PROMPT"
+echo "- Frames: $FRAMES"
+echo "- Size: $SIZE"
+echo ""
+
+# Run with nohup and redirect output to a log file
+nohup python generate.py \
+    --task i2v-1.3B \
+    --ckpt_dir /workspace/models/Wan2.1-T2V-1.3B \
+    --size "$SIZE" \
+    --frame_num "$FRAMES" \
+    --image "$IMAGE" \
+    --prompt "$PROMPT" \
+    > video_generation.log 2>&1 &
+
+# Store the process ID
+PID=$!
+
+# Wait for the process to complete
+wait $PID
 
 # Ring bell once for video completion
 "$(dirname "$0")/../utils/notify.sh" 1
@@ -186,10 +173,6 @@ fi
 # Upload to S3 if requested
 if [[ "$UPLOAD_TO_S3" = true ]]; then
     echo "Uploading to S3..."
-    if [[ "$TASK" == *"t2v"* ]]; then
-        OUTPUT_DIR="outputs/t2v"
-    else
-        OUTPUT_DIR="outputs/i2v"
-    fi
+    OUTPUT_DIR="outputs/t2v"
     "$(dirname "$0")/upload_s3.sh" "$OUTPUT_DIR"
 fi 

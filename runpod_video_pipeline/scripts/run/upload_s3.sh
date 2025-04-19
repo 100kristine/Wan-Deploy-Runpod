@@ -1,8 +1,12 @@
 #!/bin/bash
 set -e
 
+# Find the project root directory (where .env should be)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." &> /dev/null && pwd)"
+
 # Load environment variables from .env if it exists
-if [[ -f .env ]]; then
+if [[ -f "$PROJECT_ROOT/.env" ]]; then
     echo "Loading environment variables from .env..."
     # Only export valid variable assignments, ignore comments and empty lines
     while IFS= read -r line; do
@@ -11,18 +15,9 @@ if [[ -f .env ]]; then
         [[ -z "$line" ]] && continue
         # Export the variable
         export "$line"
-    done < .env
+    done < "$PROJECT_ROOT/.env"
 else
-    echo "Note: No .env file found. Using environment variables from system."
-fi
-
-# Check if AWS CLI is installed
-if ! command -v aws &> /dev/null; then
-    echo "Installing AWS CLI..."
-    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-    unzip awscliv2.zip
-    sudo ./aws/install
-    rm -rf aws awscliv2.zip
+    echo "Note: No .env file found in $PROJECT_ROOT. Using environment variables from system."
 fi
 
 # Required environment variables
