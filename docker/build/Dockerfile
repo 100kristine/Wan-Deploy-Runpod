@@ -105,6 +105,9 @@ notebook = "*"\n\
 requires = ["poetry-core"]\n\
 build-backend = "poetry.core.masonry.api"' > pyproject.toml
 
+# Install Poetry dependencies during build
+RUN poetry install --no-root
+
 # Set default git config
 RUN git config --global user.name "RunPod User" && \
     git config --global user.email "user@runpod.io"
@@ -167,5 +170,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
 # Expose both SSH and Jupyter ports
 EXPOSE 22 8888
 
-# Set the entry point
-ENTRYPOINT ["/startup.sh"] 
+# Copy and set up startup script
+COPY startup.sh /workspace/startup.sh
+RUN chmod +x /workspace/startup.sh
+
+# Set the startup script as the command
+CMD ["/workspace/startup.sh"] 

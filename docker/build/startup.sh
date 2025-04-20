@@ -1,15 +1,17 @@
 #!/bin/bash
 
-# Initialize poetry environment if not already done
+echo "Starting startup script..."
 cd /workspace
-if [ ! -d ".venv" ]; then
-    echo "Initializing Poetry environment..."
-    poetry install --no-root
-fi
+echo "Current directory: $(pwd)"
 
-# Ensure Jupyter is installed in the Poetry environment
-echo "Ensuring Jupyter is installed..."
-poetry run pip install jupyter notebook --quiet
+# Verify Jupyter installation
+echo "Verifying Jupyter installation..."
+if poetry run which jupyter > /dev/null; then
+    echo "✓ Jupyter is installed"
+else
+    echo "⚠️  Jupyter not found in Poetry environment!"
+    exit 1
+fi
 
 # Start Jupyter notebook in the background
 echo "Starting Jupyter notebook server..."
@@ -20,17 +22,27 @@ poetry run jupyter notebook \
     --allow-root \
     --NotebookApp.token='' \
     --NotebookApp.password='' \
-    --notebook-dir=/workspace >> /workspace/jupyter.log 2>&1 &
+    --notebook-dir=/workspace 2>&1 | tee /workspace/jupyter.log &
 
 # Wait a few seconds to check if Jupyter started successfully
+echo "Waiting for Jupyter to start..."
 sleep 5
 if pgrep -f "jupyter-notebook" > /dev/null; then
     echo "✓ Jupyter notebook is running on port 8888"
-    echo "  Check /workspace/jupyter.log for details"
+    echo "  Log file: /workspace/jupyter.log"
+    cat /workspace/jupyter.log
 else
     echo "⚠️  Failed to start Jupyter notebook"
-    echo "  Check /workspace/jupyter.log for errors"
+    echo "Error log:"
+    cat /workspace/jupyter.log
+    exit 1
 fi
 
-# Keep the container running
+# Start SSH service (if needed)
+service ssh start
+
+echo "🚀 Container is ready!"
+
+# Keep container running
+echo "Keeping container alive..."
 tail -f /dev/null 
