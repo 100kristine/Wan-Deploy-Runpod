@@ -54,6 +54,7 @@ RUN apt-get update && apt-get install -y \
     python3.10 \
     python3-pip \
     git \
+    git-lfs \
     openssh-server \
     tmux \
     vim \
@@ -96,6 +97,9 @@ authors = ["RunPod User <user@runpod.io>"]\n\
 python = "^3.10"\n\
 torch = "*"\n\
 transformers = "*"\n\
+ipython = "*"\n\
+jupyter = "*"\n\
+notebook = "*"\n\
 \n\
 [build-system]\n\
 requires = ["poetry-core"]\n\
@@ -105,13 +109,53 @@ build-backend = "poetry.core.masonry.api"' > pyproject.toml
 RUN git config --global user.name "RunPod User" && \
     git config --global user.email "user@runpod.io"
 
-# Create startup script
+# Create startup script with additional initialization
 RUN echo '#!/bin/bash\n\
 cd /workspace\n\
+\n\
+# ===== Startup Actions =====\n\
+# Update and install git-lfs\n\
+apt-get update\n\
+apt-get install -y git-lfs\n\
+git lfs install\n\
+\n\
+# Source bash profile if it exists\n\
+if [ -f ~/.bash_profile ]; then\n\
+    source ~/.bash_profile\n\
+fi\n\
+\n\
+# Run setup command if it exists\n\
+if command -v setup &> /dev/null; then\n\
+    setup\n\
+fi\n\
+\n\
+echo "Installing Python dependencies..."\n\
 # Install dependencies without installing the project itself\n\
-poetry install --no-root\n\
+poetry install --no-root || { echo "Failed to install dependencies"; exit 1; }\n\
+\n\
+# Verify Jupyter is installed\n\
+if ! poetry run which jupyter > /dev/null; then\n\
+    echo "Jupyter not found, installing directly..."\n\
+    poetry run pip install jupyter notebook\n\
+fi\n\
+\n\
+# Start Jupyter notebook in background with explicit path\n\
+echo "Starting Jupyter notebook server..."\n\
+poetry run jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --notebook-dir=/workspace &\n\
+\n\
+# Wait for Jupyter to start\n\
+sleep 5\n\
+if ! pgrep -f jupyter > /dev/null; then\n\
+    echo "Failed to start Jupyter notebook server"\n\
+else\n\
+    echo "✓ Jupyter notebook server running on port 8888"\n\
+fi\n\
+\n\
+# Start SSH service\n\
 service ssh start\n\
+\n\
 echo "🚀 Container is ready!"\n\
+\n\
 # Keep container running\n\
 tail -f /dev/null' > /startup.sh && \
     chmod +x /startup.sh
@@ -120,8 +164,8 @@ tail -f /dev/null' > /startup.sh && \
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD nvidia-smi && [ "$(uname -m)" = "x86_64" ] || exit 1
 
-# Expose SSH port
-EXPOSE 22
+# Expose both SSH and Jupyter ports
+EXPOSE 22 8888
 
 # Set the entry point
 ENTRYPOINT ["/startup.sh"] 
